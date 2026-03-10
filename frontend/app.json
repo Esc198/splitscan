@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "SplitScan",
+    "slug": "splitscan",
+    "android": {
+      "package": "com.splitscan.app"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Permite acceso a tus fotos para escanear tickets.",
+          "cameraPermission": "Permite usar la camara para fotografiar tickets."
+        }
+      ]
+    ]
+  }
+}

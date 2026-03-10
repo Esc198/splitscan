@@ -1,0 +1,7 @@
+{
+  "name": "SplitScan",
+  "description": "Fintech minimalista para gestión de gastos compartidos y control financiero personal con OCR local.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

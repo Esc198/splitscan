@@ -1,0 +1,30 @@
+{
+  "checkpoint": "C:\\Users\\enriq\\OneDrive - Universidad de Burgos\\Programacion\\Triccount\\models\\layout_model_best.pt",
+  "onnx_path": "C:\\Users\\enriq\\OneDrive - Universidad de Burgos\\Programacion\\Triccount\\models\\layout_model.onnx",
+  "labels": [
+    "ITEM_DESC",
+    "ITEM_QTY",
+    "ITEM_PRICE",
+    "TOTAL",
+    "TAX",
+    "HEADER",
+    "NOISE"
+  ],
+  "char_vocab": "abcdefghijklmnopqrstuvwxyz0123456789.,:-/+*%()[]{}'\"\u00e2\u201a\u00ac$#@!?_& ",
+  "token_feature_dim": null,
+  "model_config": {
+    "vocab_size": 64,
+    "feature_dim": 12,
+    "num_labels": 7,
+    "max_char_len": 24,
+    "max_tokens": 220,
+    "char_embedding_dim": 48,
+    "feature_projection_dim": 48,
+    "model_dim": 128,
+    "num_heads": 4,
+    "num_layers": 3,
+    "feedforward_dim": 256,
+    "dropout": 0.1
+  },
+  "val_metrics": null
+}
