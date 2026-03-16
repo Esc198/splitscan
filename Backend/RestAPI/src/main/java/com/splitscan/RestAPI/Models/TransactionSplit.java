@@ -35,7 +35,6 @@ public class TransactionSplit {
     @Setter
     private BigDecimal amount;
 
-    public TransactionSplit() {}
 
 
 }

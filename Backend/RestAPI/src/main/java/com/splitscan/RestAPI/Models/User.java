@@ -26,8 +26,10 @@ public class User {
     @Column(unique = true)
     private String email;
 
-    public User() {}
-
+    @Getter
+    @Setter
+    @Column(nullable = false)
+    private String password;
 
 
 }

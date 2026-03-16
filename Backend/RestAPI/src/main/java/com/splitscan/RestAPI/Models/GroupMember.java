@@ -38,7 +38,6 @@ public class GroupMember {
     @Column(nullable = false)
     private Instant joinedAt;
 
-    public GroupMember() {}
 
 
 

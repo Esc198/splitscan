@@ -18,7 +18,5 @@ public class GroupMemberId implements Serializable {
 	@Setter
 	private UUID user;
 
-	public GroupMemberId() {
-	}
 
 }

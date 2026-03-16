@@ -10,9 +10,9 @@ import com.splitscan.RestAPI.Models.GroupMemberId;
 
 public interface GroupMemberRepository extends JpaRepository<GroupMember, GroupMemberId> {
 
-    boolean existsByGroupIdAndUserId(UUID groupId, UUID userId);
+    boolean existsByGroup_IdAndUser_Id(UUID groupId, UUID userId);
 
-    List<GroupMember> findByUserId(UUID userId);
+    List<GroupMember> findByUser_Id(UUID userId);
 
-    List<GroupMember> findByGroupId(UUID groupId);
+    List<GroupMember> findByGroup_Id(UUID groupId);
 }

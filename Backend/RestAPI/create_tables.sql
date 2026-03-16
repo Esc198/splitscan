@@ -1,7 +1,15 @@
+drop TABLE users if exists;
+drop TABLE groups if exists;
+drop TABLE group_members if exists;
+drop TABLE transactions if exists;
+drop TABLE transaction_splits if exists;
+
+
 CREATE TABLE users (
     id UUID PRIMARY KEY,
     name TEXT NOT NULL,
-    email TEXT UNIQUE
+    email TEXT UNIQUE,
+    password TEXT NOT NULL
 );
 
 

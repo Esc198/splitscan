@@ -22,5 +22,4 @@ public class TransactionSplitId implements Serializable {
 	@Setter
 	private UUID user;
 
-    public TransactionSplitId() {}
 }
