@@ -1,27 +1,87 @@
 package com.splitscan.RestAPI.Models;
 
 import java.math.BigDecimal;
-import java.util.List;
+import java.time.Instant;
 import java.util.UUID;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
+import lombok.Setter;
 
 @Entity
 @Table(name = "transactions")
-
 public class Transaction {
-	@Getter
+
+    @Id
+    @Getter
+    @Setter
     private UUID id;
+
+    @ManyToOne
+    @JoinColumn(name = "group_id", nullable = false)
     @Getter
+    @Setter
+    private Group group;
+
+    @ManyToOne
+    @JoinColumn(name = "paid_by", nullable = false)
+    @Getter
+    @Setter
+    private User paidBy;
+
+    @Getter
+    @Setter
     private String description;
+
+    @Column(nullable = false)
     @Getter
-    private User pagador;
-    @Getter	
-    private List<User> deudores;
-    @Getter	
+    @Setter
     private BigDecimal amount;
 
+    @Column(nullable = false)
+    @Getter
+    @Setter
+    private Instant createdAt;
 
+    @Column(nullable = false)
+    @Getter
+    @Setter
+    private Instant updatedAt;
+
+    @Getter
+    @Setter
+    private Instant deletedAt;
+
+    public Transaction() {}
+
+
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+        this.updatedAt = updatedAt;
+    }
+
+    public Instant getDeletedAt() {
+        return deletedAt;
+    }
+
+    public void setDeletedAt(Instant deletedAt) {
+        this.deletedAt = deletedAt;
+    }
 }

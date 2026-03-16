@@ -1,23 +1,33 @@
 package com.splitscan.RestAPI.Models;
 
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.UUID;
-
-import jakarta.persistence.Entity;
-import jakarta.persistence.Table;
-import lombok.AllArgsConstructor;
-import lombok.NoArgsConstructor;
-
 
 @Entity
 @Table(name = "users")
-@AllArgsConstructor
-@NoArgsConstructor
 public class User {
 
-    private UUID id;
+    @Id
+    @Getter
+    @Setter
+    private UUID id;    
+    
+    @Getter
+    @Setter
+    @Column(nullable = false)
     private String name;
 
+    @Getter
+    @Setter
+    @Column(unique = true)
+    private String email;
 
-    public UUID getId() { return id; }
-    public String getName() { return name; }
+    public User() {}
+
+
+
 }
