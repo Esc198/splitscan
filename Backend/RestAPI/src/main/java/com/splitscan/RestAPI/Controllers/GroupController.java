@@ -2,6 +2,7 @@ package com.splitscan.RestAPI.Controllers;
 
 import org.springframework.web.bind.annotation.RestController;
 
+import com.splitscan.RestAPI.DTOs.group.GroupMembersRequestDTO;
 import com.splitscan.RestAPI.DTOs.group.GroupRequestDTO;
 import com.splitscan.RestAPI.DTOs.group.GroupResponseDTO;
 import com.splitscan.RestAPI.Services.GroupService;
@@ -29,5 +30,10 @@ public class GroupController {
     @PostMapping
     public GroupResponseDTO createGroup(@RequestBody GroupRequestDTO dto) {
         return groupService.createGroup(dto);
+    }
+
+    @PostMapping("/{groupId}/members")
+    public GroupResponseDTO addMembers(@PathVariable UUID groupId, @RequestBody GroupMembersRequestDTO dto) {
+        return groupService.addMembers(groupId, dto.getUserIds());
     }
 }
