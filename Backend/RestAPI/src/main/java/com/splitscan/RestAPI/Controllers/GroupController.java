@@ -2,13 +2,25 @@ package com.splitscan.RestAPI.Controllers;
 
 import org.springframework.web.bind.annotation.RestController;
 
+import com.splitscan.RestAPI.Models.Group;
+import com.splitscan.RestAPI.Services.GroupService;
+
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
 @RestController
+@RequestMapping("/groups")
 public class GroupController {
 
-	@GetMapping("/groups")
-	public List<Group> getGroups() {
-		// Logic to retrieve groups from the database
-		return groupService.getAllGroups();
-	}
-	
+    private final GroupService groupService;
+
+    public GroupController(GroupService groupService) {
+        this.groupService = groupService;
+    }
+
+    @GetMapping
+    public List<Group> getGroups() {
+        return groupService.getAllGroups();
+    }
 }
