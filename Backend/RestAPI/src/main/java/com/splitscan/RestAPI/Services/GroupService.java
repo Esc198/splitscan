@@ -1,10 +1,17 @@
 package com.splitscan.RestAPI.Services;
 
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.splitscan.RestAPI.DTOs.group.GroupRequestDTO;
 import com.splitscan.RestAPI.DTOs.group.GroupResponseDTO;
@@ -14,16 +21,20 @@ import com.splitscan.RestAPI.Models.GroupMember;
 import com.splitscan.RestAPI.Models.User;
 import com.splitscan.RestAPI.Repositories.GroupMemberRepository;
 import com.splitscan.RestAPI.Repositories.GroupRepository;
+import com.splitscan.RestAPI.Repositories.UserRepository;
 
 @Service
 public class GroupService {
 
     private final GroupRepository groupRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final UserRepository userRepository;
 
-    public GroupService(GroupRepository groupRepository, GroupMemberRepository groupMemberRepository) {
+    public GroupService(GroupRepository groupRepository, GroupMemberRepository groupMemberRepository,
+            UserRepository userRepository) {
         this.groupRepository = groupRepository;
         this.groupMemberRepository = groupMemberRepository;
+        this.userRepository = userRepository;
     }
 
     public List<GroupResponseDTO> getGroupsForUser(UUID userId) {
@@ -34,9 +45,7 @@ public class GroupService {
     }
 
     public GroupResponseDTO getGroup(UUID groupId) {
-        return groupRepository.findById(groupId)
-                .map(this::toResponseDTO)
-                .orElseThrow(() -> new RuntimeException("Group not found"));
+        return toResponseDTO(getGroupEntityById(groupId));
     }
 
     public GroupResponseDTO createGroup(GroupRequestDTO dto) {
@@ -47,6 +56,74 @@ public class GroupService {
 
         Group savedGroup = groupRepository.save(group);
         return toResponseDTO(savedGroup);
+    }
+
+    @Transactional
+    public GroupResponseDTO addMembers(UUID groupId, List<UUID> userIds) {
+        validateUserIds(userIds);
+
+        Group group = getGroupEntityById(groupId);
+        List<User> users = getUsersByIds(userIds);
+
+        for (UUID userId : userIds) {
+            if (groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, userId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "User already belongs to group: " + userId);
+            }
+        }
+
+        Instant joinedAt = Instant.now();
+        List<GroupMember> members = users.stream()
+                .map(user -> buildGroupMember(group, user, joinedAt))
+                .toList();
+
+        groupMemberRepository.saveAll(members);
+        return toResponseDTO(group);
+    }
+
+    private void validateUserIds(List<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userIds must contain at least one user id");
+        }
+        if (userIds.stream().anyMatch(userId -> userId == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "userIds cannot contain null values");
+        }
+
+        LinkedHashSet<UUID> uniqueUserIds = new LinkedHashSet<>(userIds);
+        if (uniqueUserIds.size() != userIds.size()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "userIds cannot contain duplicates");
+        }
+    }
+
+    private Group getGroupEntityById(UUID groupId) {
+        return groupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found: " + groupId));
+    }
+
+    private List<User> getUsersByIds(List<UUID> userIds) {
+        List<User> users = userRepository.findAllById(userIds);
+        Map<UUID, User> usersById = users.stream()
+                .collect(Collectors.toMap(User::getId, Function.identity()));
+
+        List<UUID> missingUserIds = userIds.stream()
+                .filter(userId -> !usersById.containsKey(userId))
+                .toList();
+
+        if (!missingUserIds.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Users not found: " + missingUserIds);
+        }
+
+        return userIds.stream()
+                .map(usersById::get)
+                .toList();
+    }
+
+    private GroupMember buildGroupMember(Group group, User user, Instant joinedAt) {
+        GroupMember member = new GroupMember();
+        member.setGroup(group);
+        member.setUser(user);
+        member.setJoinedAt(joinedAt);
+        return member;
     }
 
     private GroupResponseDTO toResponseDTO(Group group) {
