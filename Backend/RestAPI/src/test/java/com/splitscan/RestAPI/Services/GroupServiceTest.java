@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -153,7 +154,7 @@ class GroupServiceTest {
         UUID groupId = UUID.randomUUID();
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of(UUID.randomUUID(), null)));
+                () -> groupService.addMembers(groupId, Arrays.asList(UUID.randomUUID(), null)));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(groupRepository, never()).findById(eq(groupId));
