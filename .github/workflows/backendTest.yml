@@ -26,7 +26,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: Backend
+        working-directory: Backend/RestAPI
 
     steps:
       - name: Checkout repository
