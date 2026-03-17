@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -26,6 +27,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.splitscan.RestAPI.DTOs.group.GroupRequestDTO;
 import com.splitscan.RestAPI.DTOs.group.GroupResponseDTO;
 import com.splitscan.RestAPI.Models.Group;
 import com.splitscan.RestAPI.Models.GroupMember;
@@ -52,28 +54,60 @@ class GroupServiceTest {
     @Captor
     private ArgumentCaptor<List<GroupMember>> membersCaptor;
 
+    @Captor
+    private ArgumentCaptor<GroupMember> memberCaptor;
+
+    @Test
+    void createGroupAddsCreatorAsInitialMember() {
+        UUID creatorId = UUID.randomUUID();
+        User creator = buildUser(creatorId, "Enrique", "enrique@example.com");
+        GroupRequestDTO request = new GroupRequestDTO();
+        request.setName("Viaje a Madrid");
+
+        when(userRepository.findById(creatorId)).thenReturn(Optional.of(creator));
+        when(groupRepository.save(any(Group.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(groupMemberRepository.findByGroup_Id(any(UUID.class)))
+                .thenAnswer(invocation -> List.of(buildMember(buildGroup(invocation.getArgument(0), request.getName()), creator)));
+
+        GroupResponseDTO response = groupService.createGroup(creatorId, request);
+
+        verify(groupMemberRepository).save(memberCaptor.capture());
+        GroupMember savedMember = memberCaptor.getValue();
+        assertEquals(creatorId, savedMember.getUser().getId());
+        assertEquals(response.getId(), savedMember.getGroup().getId());
+        assertNotNull(savedMember.getJoinedAt());
+        assertEquals(1, response.getUsers().size());
+        assertEquals(creatorId, response.getUsers().get(0).getId());
+    }
+
     @Test
     void addMembersCreatesAllMembershipsAndReturnsUpdatedGroup() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID userIdOne = UUID.randomUUID();
         UUID userIdTwo = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje a Madrid");
-        User userOne = buildUser(userIdOne, "Enrique", "enrique@example.com");
-        User userTwo = buildUser(userIdTwo, "Laura", "laura@example.com");
+        User currentUser = buildUser(currentUserId, "Enrique", "enrique@example.com");
+        User userOne = buildUser(userIdOne, "Laura", "laura@example.com");
+        User userTwo = buildUser(userIdTwo, "Marta", "marta@example.com");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(userRepository.findAllById(List.of(userIdOne, userIdTwo))).thenReturn(List.of(userOne, userTwo));
         when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, userIdOne)).thenReturn(false);
         when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, userIdTwo)).thenReturn(false);
         when(groupMemberRepository.findByGroup_Id(groupId))
-                .thenReturn(List.of(buildMember(group, userOne), buildMember(group, userTwo)));
+                .thenReturn(List.of(
+                        buildMember(group, currentUser),
+                        buildMember(group, userOne),
+                        buildMember(group, userTwo)));
 
-        GroupResponseDTO response = groupService.addMembers(groupId, List.of(userIdOne, userIdTwo));
+        GroupResponseDTO response = groupService.addMembers(currentUserId, groupId, List.of(userIdOne, userIdTwo));
 
         assertEquals(groupId, response.getId());
-        assertEquals(2, response.getUsers().size());
-        assertTrue(response.getUsers().stream().anyMatch(user -> user.getEmail().equals("enrique@example.com")));
+        assertEquals(3, response.getUsers().size());
         assertTrue(response.getUsers().stream().anyMatch(user -> user.getEmail().equals("laura@example.com")));
+        assertTrue(response.getUsers().stream().anyMatch(user -> user.getEmail().equals("marta@example.com")));
 
         verify(groupMemberRepository).saveAll(membersCaptor.capture());
         List<GroupMember> savedMembers = membersCaptor.getValue();
@@ -84,13 +118,31 @@ class GroupServiceTest {
     }
 
     @Test
+    void addMembersFailsWhenCurrentUserIsNotGroupMember() {
+        UUID currentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        Group group = buildGroup(groupId, "Viaje a Madrid");
+
+        when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(false);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> groupService.addMembers(currentUserId, groupId, List.of(UUID.randomUUID())));
+
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        verify(userRepository, never()).findAllById(anyList());
+        verify(groupMemberRepository, never()).saveAll(anyList());
+    }
+
+    @Test
     void addMembersFailsWhenGroupDoesNotExist() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of(UUID.randomUUID())));
+                () -> groupService.addMembers(currentUserId, groupId, List.of(UUID.randomUUID())));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(userRepository, never()).findAllById(anyList());
@@ -99,17 +151,19 @@ class GroupServiceTest {
 
     @Test
     void addMembersFailsWhenAnyUserDoesNotExist() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID userIdOne = UUID.randomUUID();
         UUID userIdTwo = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje a Madrid");
-        User userOne = buildUser(userIdOne, "Enrique", "enrique@example.com");
+        User userOne = buildUser(userIdOne, "Laura", "laura@example.com");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(userRepository.findAllById(List.of(userIdOne, userIdTwo))).thenReturn(List.of(userOne));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of(userIdOne, userIdTwo)));
+                () -> groupService.addMembers(currentUserId, groupId, List.of(userIdOne, userIdTwo)));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(groupMemberRepository, never()).saveAll(anyList());
@@ -117,20 +171,22 @@ class GroupServiceTest {
 
     @Test
     void addMembersFailsWhenAnyUserAlreadyBelongsToGroup() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID userIdOne = UUID.randomUUID();
         UUID userIdTwo = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje a Madrid");
-        User userOne = buildUser(userIdOne, "Enrique", "enrique@example.com");
-        User userTwo = buildUser(userIdTwo, "Laura", "laura@example.com");
+        User userOne = buildUser(userIdOne, "Laura", "laura@example.com");
+        User userTwo = buildUser(userIdTwo, "Marta", "marta@example.com");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(userRepository.findAllById(List.of(userIdOne, userIdTwo))).thenReturn(List.of(userOne, userTwo));
         when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, userIdOne)).thenReturn(false);
         when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, userIdTwo)).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of(userIdOne, userIdTwo)));
+                () -> groupService.addMembers(currentUserId, groupId, List.of(userIdOne, userIdTwo)));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(groupMemberRepository, never()).saveAll(anyList());
@@ -138,11 +194,12 @@ class GroupServiceTest {
 
     @Test
     void addMembersFailsWhenRequestContainsDuplicateUserIds() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of(userId, userId)));
+                () -> groupService.addMembers(currentUserId, groupId, List.of(userId, userId)));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(groupRepository, never()).findById(eq(groupId));
@@ -151,10 +208,11 @@ class GroupServiceTest {
 
     @Test
     void addMembersFailsWhenRequestContainsNullIds() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, Arrays.asList(UUID.randomUUID(), null)));
+                () -> groupService.addMembers(currentUserId, groupId, Arrays.asList(UUID.randomUUID(), null)));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(groupRepository, never()).findById(eq(groupId));
@@ -163,10 +221,11 @@ class GroupServiceTest {
 
     @Test
     void addMembersFailsWhenRequestContainsNoIds() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> groupService.addMembers(groupId, List.of()));
+                () -> groupService.addMembers(currentUserId, groupId, List.of()));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(groupRepository, never()).findById(eq(groupId));

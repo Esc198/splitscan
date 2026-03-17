@@ -37,32 +37,38 @@ public class GroupService {
         this.userRepository = userRepository;
     }
 
-    public List<GroupResponseDTO> getGroupsForUser(UUID userId) {
-        return groupMemberRepository.findByUser_Id(userId).stream()
+    public List<GroupResponseDTO> getMyGroups(UUID currentUserId) {
+        return groupMemberRepository.findByUser_Id(currentUserId).stream()
                 .map(GroupMember::getGroup)
                 .map(this::toResponseDTO)
                 .toList();
     }
 
-    public GroupResponseDTO getGroup(UUID groupId) {
-        return toResponseDTO(getGroupEntityById(groupId));
+    public GroupResponseDTO getGroup(UUID currentUserId, UUID groupId) {
+        Group group = getGroupEntityById(groupId);
+        validateGroupMembership(currentUserId, groupId);
+        return toResponseDTO(group);
     }
 
-    public GroupResponseDTO createGroup(GroupRequestDTO dto) {
+    @Transactional
+    public GroupResponseDTO createGroup(UUID currentUserId, GroupRequestDTO dto) {
         Group group = new Group();
         group.setId(UUID.randomUUID());
         group.setName(dto.getName());
         group.setCreatedAt(Instant.now());
 
         Group savedGroup = groupRepository.save(group);
+        User creator = getUserEntityById(currentUserId);
+        groupMemberRepository.save(buildGroupMember(savedGroup, creator, Instant.now()));
         return toResponseDTO(savedGroup);
     }
 
     @Transactional
-    public GroupResponseDTO addMembers(UUID groupId, List<UUID> userIds) {
+    public GroupResponseDTO addMembers(UUID currentUserId, UUID groupId, List<UUID> userIds) {
         validateUserIds(userIds);
 
         Group group = getGroupEntityById(groupId);
+        validateGroupMembership(currentUserId, groupId);
         List<User> users = getUsersByIds(userIds);
 
         for (UUID userId : userIds) {
@@ -100,6 +106,11 @@ public class GroupService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found: " + groupId));
     }
 
+    private User getUserEntityById(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + userId));
+    }
+
     private List<User> getUsersByIds(List<UUID> userIds) {
         List<User> users = userRepository.findAllById(userIds);
         Map<UUID, User> usersById = users.stream()
@@ -124,6 +135,14 @@ public class GroupService {
         member.setUser(user);
         member.setJoinedAt(joinedAt);
         return member;
+    }
+
+    private void validateGroupMembership(UUID currentUserId, UUID groupId) {
+        if (!groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "User is not a member of group: " + groupId);
+        }
     }
 
     private GroupResponseDTO toResponseDTO(Group group) {

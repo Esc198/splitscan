@@ -13,6 +13,9 @@ public class RestApiApplication {
 		System.setProperty("DB_URL", dotenv.get("DB_URL"));
 		System.setProperty("DB_USER", dotenv.get("DB_USER"));
 		System.setProperty("DB_PASSWORD", dotenv.get("DB_PASSWORD"));
+		System.setProperty("JWT_SECRET", dotenv.get("JWT_SECRET"));
+		System.setProperty("JWT_ACCESS_TTL_MINUTES", dotenv.get("JWT_ACCESS_TTL_MINUTES"));
+		System.setProperty("REFRESH_TOKEN_TTL_DAYS", dotenv.get("REFRESH_TOKEN_TTL_DAYS"));
 	
 
 		SpringApplication.run(RestApiApplication.class, args);
