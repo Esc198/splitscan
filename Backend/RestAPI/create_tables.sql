@@ -3,6 +3,7 @@ drop TABLE groups if exists;
 drop TABLE group_members if exists;
 drop TABLE transactions if exists;
 drop TABLE transaction_splits if exists;
+drop TABLE refresh_tokens if exists;
 
 
 CREATE TABLE users (
@@ -78,4 +79,17 @@ CREATE TABLE transaction_splits (
 
     FOREIGN KEY (user_id)
         REFERENCES users(id)
+);
+
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY,
+    user_id UUID NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMP NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    revoked_at TIMESTAMP,
+
+    FOREIGN KEY (user_id)
+        REFERENCES users(id)
+        ON DELETE CASCADE
 );

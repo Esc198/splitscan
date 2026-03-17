@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.splitscan.RestAPI.DTOs.transaction.TransactionRequestDTO;
 import com.splitscan.RestAPI.DTOs.transaction.TransactionResponseDTO;
+import com.splitscan.RestAPI.Security.CurrentUserService;
 import com.splitscan.RestAPI.Services.TransactionService;
 
 @RestController
@@ -26,28 +27,33 @@ import com.splitscan.RestAPI.Services.TransactionService;
 public class TransactionController {
 
     private final TransactionService transactionService;
+    private final CurrentUserService currentUserService;
 
-    public TransactionController(TransactionService transactionService) {
+    public TransactionController(TransactionService transactionService, CurrentUserService currentUserService) {
         this.transactionService = transactionService;
+        this.currentUserService = currentUserService;
     }
 
     @GetMapping
     public List<TransactionResponseDTO> getTransactions(
             @PathVariable UUID groupId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant since) {
-        return transactionService.getTransactions(groupId, since);
+        return transactionService.getTransactions(currentUserService.requireCurrentUserId(), groupId, since);
     }
 
     @GetMapping("/{transactionId}")
     public TransactionResponseDTO getTransaction(@PathVariable UUID groupId, @PathVariable UUID transactionId) {
-        return transactionService.getTransaction(groupId, transactionId);
+        return transactionService.getTransaction(currentUserService.requireCurrentUserId(), groupId, transactionId);
     }
 
     @PostMapping
     public ResponseEntity<TransactionResponseDTO> createTransaction(
             @PathVariable UUID groupId,
             @RequestBody TransactionRequestDTO dto) {
-        TransactionResponseDTO created = transactionService.createTransaction(groupId, dto);
+        TransactionResponseDTO created = transactionService.createTransaction(
+                currentUserService.requireCurrentUserId(),
+                groupId,
+                dto);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
@@ -56,12 +62,12 @@ public class TransactionController {
             @PathVariable UUID groupId,
             @PathVariable UUID transactionId,
             @RequestBody TransactionRequestDTO dto) {
-        return transactionService.updateTransaction(groupId, transactionId, dto);
+        return transactionService.updateTransaction(currentUserService.requireCurrentUserId(), groupId, transactionId, dto);
     }
 
     @DeleteMapping("/{transactionId}")
     public ResponseEntity<Void> deleteTransaction(@PathVariable UUID groupId, @PathVariable UUID transactionId) {
-        transactionService.deleteTransaction(groupId, transactionId);
+        transactionService.deleteTransaction(currentUserService.requireCurrentUserId(), groupId, transactionId);
         return ResponseEntity.noContent().build();
     }
 }

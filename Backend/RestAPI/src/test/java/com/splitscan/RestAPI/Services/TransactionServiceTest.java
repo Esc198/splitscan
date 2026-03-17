@@ -70,6 +70,7 @@ class TransactionServiceTest {
 
     @Test
     void getTransactionsWithoutSinceReturnsActiveTransactionsOrderedByUpdatedAtAsc() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
         User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
@@ -94,6 +95,7 @@ class TransactionServiceTest {
                 null);
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByGroup_IdAndDeletedAtIsNullOrderByUpdatedAtAsc(groupId))
                 .thenReturn(List.of(first, second));
         when(transactionSplitRepository.findByTransaction_IdInOrderByTransaction_IdAscUser_IdAsc(
@@ -104,7 +106,7 @@ class TransactionServiceTest {
                                 buildSplit(second, payer, "25.00"),
                                 buildSplit(second, participant, "25.00")));
 
-        List<TransactionResponseDTO> response = transactionService.getTransactions(groupId, null);
+        List<TransactionResponseDTO> response = transactionService.getTransactions(currentUserId, groupId, null);
 
         assertEquals(List.of(first.getId(), second.getId()), response.stream().map(TransactionResponseDTO::getId).toList());
         assertEquals(2, response.get(0).getSplits().size());
@@ -113,7 +115,24 @@ class TransactionServiceTest {
     }
 
     @Test
+    void getTransactionsFailsWhenCurrentUserIsNotMember() {
+        UUID currentUserId = UUID.randomUUID();
+        UUID groupId = UUID.randomUUID();
+        Group group = buildGroup(groupId, "Viaje");
+
+        when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(false);
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> transactionService.getTransactions(currentUserId, groupId, null));
+
+        assertEquals(HttpStatus.FORBIDDEN, ex.getStatusCode());
+        verify(transactionRepository, never()).findByGroup_IdAndDeletedAtIsNullOrderByUpdatedAtAsc(groupId);
+    }
+
+    @Test
     void getTransactionsSinceReturnsUpdatedTransactionsIncludingDeleted() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Instant since = Instant.parse("2026-03-16T10:00:00Z");
         Group group = buildGroup(groupId, "Viaje");
@@ -138,6 +157,7 @@ class TransactionServiceTest {
                 "2026-03-16T10:15:00Z");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByGroup_IdAndUpdatedAtGreaterThanEqualOrderByUpdatedAtAsc(groupId, since))
                 .thenReturn(List.of(active, deleted));
         when(transactionSplitRepository.findByTransaction_IdInOrderByTransaction_IdAscUser_IdAsc(
@@ -146,7 +166,7 @@ class TransactionServiceTest {
                                 buildSplit(active, payer, "30.00"),
                                 buildSplit(deleted, payer, "100.00")));
 
-        List<TransactionResponseDTO> response = transactionService.getTransactions(groupId, since);
+        List<TransactionResponseDTO> response = transactionService.getTransactions(currentUserId, groupId, since);
 
         assertEquals(2, response.size());
         assertNull(response.get(0).getDeletedAt());
@@ -155,6 +175,7 @@ class TransactionServiceTest {
 
     @Test
     void getTransactionReturnsActiveTransactionWithSplits() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
@@ -171,6 +192,7 @@ class TransactionServiceTest {
                 null);
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.of(transaction));
         when(transactionSplitRepository.findByTransaction_IdInOrderByTransaction_IdAscUser_IdAsc(List.of(transactionId)))
@@ -178,7 +200,7 @@ class TransactionServiceTest {
                         buildSplit(transaction, participant, "20.00"),
                         buildSplit(transaction, payer, "40.00")));
 
-        TransactionResponseDTO response = transactionService.getTransaction(groupId, transactionId);
+        TransactionResponseDTO response = transactionService.getTransaction(currentUserId, groupId, transactionId);
 
         assertEquals(transactionId, response.getId());
         assertEquals(payer.getId(), response.getPaidByUserId());
@@ -190,22 +212,25 @@ class TransactionServiceTest {
 
     @Test
     void getTransactionFailsWhenTransactionDeletedOrMissing() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.getTransaction(groupId, transactionId));
+                () -> transactionService.getTransaction(currentUserId, groupId, transactionId));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
     }
 
     @Test
     void createTransactionPersistsTransactionAndSplits() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
         User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
@@ -217,6 +242,7 @@ class TransactionServiceTest {
                 splitItem(participant.getId(), "30.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(groupMemberRepository.findByGroup_Id(groupId))
                 .thenReturn(List.of(buildMember(group, payer), buildMember(group, participant)));
         when(transactionRepository.save(any(Transaction.class)))
@@ -224,7 +250,7 @@ class TransactionServiceTest {
         when(transactionSplitRepository.saveAll(anyList()))
                 .thenAnswer(invocation -> copySplits(invocation.getArgument(0)));
 
-        TransactionResponseDTO response = transactionService.createTransaction(groupId, request);
+        TransactionResponseDTO response = transactionService.createTransaction(currentUserId, groupId, request);
 
         verify(transactionRepository).save(transactionCaptor.capture());
         Transaction savedTransaction = transactionCaptor.getValue();
@@ -245,6 +271,7 @@ class TransactionServiceTest {
 
     @Test
     void createTransactionFailsWhenGroupMissing() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         TransactionRequestDTO request = buildRequest(
                 UUID.randomUUID(),
@@ -254,7 +281,7 @@ class TransactionServiceTest {
         when(groupRepository.findById(groupId)).thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(transactionRepository, never()).save(any(Transaction.class));
@@ -263,21 +290,23 @@ class TransactionServiceTest {
 
     @Test
     void createTransactionFailsWhenPaidByUserDoesNotBelongToGroup() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User member = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User currentUser = buildUser(currentUserId, "Current", "current@example.com");
         UUID outsiderId = UUID.randomUUID();
         TransactionRequestDTO request = buildRequest(
                 outsiderId,
                 "10.00",
-                splitItem(member.getId(), "10.00"));
+                splitItem(currentUser.getId(), "10.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(groupMemberRepository.findByGroup_Id(groupId))
-                .thenReturn(List.of(buildMember(group, member)));
+                .thenReturn(List.of(buildMember(group, currentUser)));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(transactionRepository, never()).save(any(Transaction.class));
@@ -285,20 +314,22 @@ class TransactionServiceTest {
 
     @Test
     void createTransactionFailsWhenSplitUserDoesNotBelongToGroup() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User payer = buildUser(currentUserId, "Enrique", "enrique@example.com");
         TransactionRequestDTO request = buildRequest(
                 payer.getId(),
                 "10.00",
                 splitItem(UUID.randomUUID(), "10.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(groupMemberRepository.findByGroup_Id(groupId))
                 .thenReturn(List.of(buildMember(group, payer)));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
         verify(transactionRepository, never()).save(any(Transaction.class));
@@ -306,9 +337,10 @@ class TransactionServiceTest {
 
     @Test
     void createTransactionFailsWhenRequestContainsDuplicateSplitUsers() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User payer = buildUser(currentUserId, "Enrique", "enrique@example.com");
         TransactionRequestDTO request = buildRequest(
                 payer.getId(),
                 "10.00",
@@ -316,26 +348,29 @@ class TransactionServiceTest {
                 splitItem(payer.getId(), "5.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(groupMemberRepository.findByGroup_Id(groupId))
                 .thenReturn(List.of(buildMember(group, payer)));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.CONFLICT, ex.getStatusCode());
     }
 
     @Test
     void createTransactionFailsWhenRequestContainsNoSplits() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User payer = buildUser(currentUserId, "Enrique", "enrique@example.com");
         TransactionRequestDTO request = buildRequest(payer.getId(), "10.00");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(groupMemberRepository, never()).findByGroup_Id(eq(groupId));
@@ -343,9 +378,10 @@ class TransactionServiceTest {
 
     @Test
     void createTransactionFailsWhenSplitAmountsDoNotMatchTotal() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User payer = buildUser(currentUserId, "Enrique", "enrique@example.com");
         User participant = buildUser(UUID.randomUUID(), "Laura", "laura@example.com");
         TransactionRequestDTO request = buildRequest(
                 payer.getId(),
@@ -354,29 +390,32 @@ class TransactionServiceTest {
                 splitItem(participant.getId(), "2.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(groupMemberRepository.findByGroup_Id(groupId))
                 .thenReturn(List.of(buildMember(group, payer), buildMember(group, participant)));
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
     }
 
     @Test
     void createTransactionFailsWhenAmountHasMoreThanTwoDecimals() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
-        User payer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
+        User payer = buildUser(currentUserId, "Enrique", "enrique@example.com");
         TransactionRequestDTO request = buildRequest(
                 payer.getId(),
                 "10.001",
                 splitItem(payer.getId(), "10.001"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.createTransaction(groupId, request));
+                () -> transactionService.createTransaction(currentUserId, groupId, request));
 
         assertEquals(HttpStatus.BAD_REQUEST, ex.getStatusCode());
         verify(groupMemberRepository, never()).findByGroup_Id(eq(groupId));
@@ -384,11 +423,12 @@ class TransactionServiceTest {
 
     @Test
     void updateTransactionReplacesSplitsAndUpdatesUpdatedAt() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
         User oldPayer = buildUser(UUID.randomUUID(), "Enrique", "enrique@example.com");
-        User newPayer = buildUser(UUID.randomUUID(), "Laura", "laura@example.com");
+        User newPayer = buildUser(currentUserId, "Laura", "laura@example.com");
         User thirdUser = buildUser(UUID.randomUUID(), "Marta", "marta@example.com");
         Transaction transaction = buildTransaction(
                 transactionId,
@@ -409,6 +449,7 @@ class TransactionServiceTest {
         InOrder inOrder = inOrder(transactionRepository, transactionSplitRepository);
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.of(transaction));
         when(groupMemberRepository.findByGroup_Id(groupId))
@@ -421,7 +462,7 @@ class TransactionServiceTest {
         when(transactionSplitRepository.saveAll(anyList()))
                 .thenAnswer(invocation -> copySplits(invocation.getArgument(0)));
 
-        TransactionResponseDTO response = transactionService.updateTransaction(groupId, transactionId, request);
+        TransactionResponseDTO response = transactionService.updateTransaction(currentUserId, groupId, transactionId, request);
 
         inOrder.verify(transactionRepository).save(transactionCaptor.capture());
         inOrder.verify(transactionSplitRepository).deleteByTransaction_Id(transactionId);
@@ -439,6 +480,7 @@ class TransactionServiceTest {
 
     @Test
     void updateTransactionFailsWhenTransactionDeletedOrMissing() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
@@ -448,11 +490,12 @@ class TransactionServiceTest {
                 splitItem(UUID.randomUUID(), "10.00"));
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.updateTransaction(groupId, transactionId, request));
+                () -> transactionService.updateTransaction(currentUserId, groupId, transactionId, request));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(transactionSplitRepository, never()).deleteByTransaction_Id(transactionId);
@@ -460,6 +503,7 @@ class TransactionServiceTest {
 
     @Test
     void deleteTransactionSetsDeletedAtAndUpdatedAt() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
@@ -475,12 +519,13 @@ class TransactionServiceTest {
                 null);
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.of(transaction));
         when(transactionRepository.save(any(Transaction.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        transactionService.deleteTransaction(groupId, transactionId);
+        transactionService.deleteTransaction(currentUserId, groupId, transactionId);
 
         verify(transactionRepository).save(transactionCaptor.capture());
         Transaction savedTransaction = transactionCaptor.getValue();
@@ -490,16 +535,18 @@ class TransactionServiceTest {
 
     @Test
     void deleteTransactionFailsWhenTransactionDeletedOrMissing() {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         UUID transactionId = UUID.randomUUID();
         Group group = buildGroup(groupId, "Viaje");
 
         when(groupRepository.findById(groupId)).thenReturn(Optional.of(group));
+        when(groupMemberRepository.existsByGroup_IdAndUser_Id(groupId, currentUserId)).thenReturn(true);
         when(transactionRepository.findByIdAndGroup_IdAndDeletedAtIsNull(transactionId, groupId))
                 .thenReturn(Optional.empty());
 
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> transactionService.deleteTransaction(groupId, transactionId));
+                () -> transactionService.deleteTransaction(currentUserId, groupId, transactionId));
 
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatusCode());
         verify(transactionRepository, never()).save(any(Transaction.class));

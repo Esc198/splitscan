@@ -18,7 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import com.splitscan.RestAPI.DTOs.transaction.TransactionResponseDTO;
+import com.splitscan.RestAPI.Security.CurrentUserService;
 import com.splitscan.RestAPI.Services.TransactionService;
 
 @ExtendWith(MockitoExtension.class)
@@ -27,26 +27,31 @@ class TransactionControllerTest {
     @Mock
     private TransactionService transactionService;
 
+    @Mock
+    private CurrentUserService currentUserService;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        TransactionController controller = new TransactionController(transactionService);
+        TransactionController controller = new TransactionController(transactionService, currentUserService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
     @Test
     void getTransactionsParsesSinceQueryParamAsIsoDateTime() throws Exception {
+        UUID currentUserId = UUID.randomUUID();
         UUID groupId = UUID.randomUUID();
         Instant since = Instant.parse("2026-03-16T10:30:00Z");
 
-        when(transactionService.getTransactions(groupId, since)).thenReturn(List.of());
+        when(currentUserService.requireCurrentUserId()).thenReturn(currentUserId);
+        when(transactionService.getTransactions(currentUserId, groupId, since)).thenReturn(List.of());
 
         mockMvc.perform(get("/groups/{groupId}/transactions", groupId)
                 .param("since", since.toString()))
                 .andExpect(status().isOk());
 
-        verify(transactionService).getTransactions(groupId, since);
+        verify(transactionService).getTransactions(currentUserId, groupId, since);
     }
 
     @Test
@@ -58,5 +63,6 @@ class TransactionControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(transactionService);
+        verifyNoInteractions(currentUserService);
     }
 }

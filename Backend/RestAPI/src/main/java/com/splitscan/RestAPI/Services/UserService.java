@@ -2,12 +2,15 @@ package com.splitscan.RestAPI.Services;
 
 import java.util.UUID;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
-import com.splitscan.RestAPI.DTOs.user.UserRequestDTO;
+import com.splitscan.RestAPI.DTOs.user.UpdateMeRequestDTO;
 import com.splitscan.RestAPI.DTOs.user.UserResponseDTO;
-import com.splitscan.RestAPI.Exceptions.UnableUpdateUserException;
-import com.splitscan.RestAPI.Exceptions.UserCreationFailedException;
 import com.splitscan.RestAPI.Models.User;
 import com.splitscan.RestAPI.Repositories.UserRepository;
 
@@ -15,82 +18,95 @@ import com.splitscan.RestAPI.Repositories.UserRepository;
 public class UserService {
 
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenService refreshTokenService;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            RefreshTokenService refreshTokenService) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.refreshTokenService = refreshTokenService;
     }
 
-    /**
-     * Creates a new user from the given DTO.
-     * Throws an exception if the email is already in use.
-     */
-    public UserResponseDTO createUser(UserRequestDTO dto) {
-        userRepository.findByEmail(dto.getEmail()).ifPresent(u -> {
-            throw new UserCreationFailedException("Email already in use: " + dto.getEmail());
-        });
-
-        User newUser = new User();
-        newUser.setId(UUID.randomUUID());
-        newUser.setName(dto.getName());
-        newUser.setEmail(dto.getEmail());
-        newUser.setPassword(dto.getPassword());
-
-        User savedUser = userRepository.save(newUser);
-        return toResponseDTO(savedUser);
+    @Transactional(readOnly = true)
+    public UserResponseDTO getCurrentUser(UUID currentUserId) {
+        return toResponseDTO(getUserEntityById(currentUserId));
     }
 
-    /**
-     * Retrieves a user by their UUID.
-     */
-    public UserResponseDTO getUserById(UUID id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found: " + id));
+    @Transactional
+    public UserResponseDTO updateCurrentUser(UUID currentUserId, UpdateMeRequestDTO dto) {
+        if (dto == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "User body is required");
+        }
 
-        return toResponseDTO(user);
-    }
-
-    /**
-     * Updates the name, email and/or password of an existing user.
-     * Only the authenticated user should be able to call this.
-     */
-    public UserResponseDTO updateUser(UUID id, UserRequestDTO dto) {
-        User user = getUserEntityById(id);
+        User user = getUserEntityById(currentUserId);
 
         if (dto.getName() != null && !dto.getName().isBlank()) {
-            user.setName(dto.getName());
+            user.setName(dto.getName().trim());
         }
         if (dto.getEmail() != null && !dto.getEmail().isBlank()) {
-            // Check that the new email is not already taken by another account
-            userRepository.findByEmail(dto.getEmail()).ifPresent(existing -> {
-                if (!existing.getId().equals(id)) {
-                    throw new UnableUpdateUserException("Email already in use: " + dto.getEmail());
+            String normalizedEmail = normalizeEmail(dto.getEmail());
+            userRepository.findByEmailIgnoreCase(normalizedEmail).ifPresent(existing -> {
+                if (!existing.getId().equals(currentUserId)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + normalizedEmail);
                 }
             });
-            user.setEmail(dto.getEmail());
+            user.setEmail(normalizedEmail);
         }
-        if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
-            user.setPassword(dto.getPassword());
-        }
+
+        updatePasswordIfRequested(user, dto);
 
         User updatedUser = userRepository.save(user);
         return toResponseDTO(updatedUser);
     }
 
-    /**
-     * Deletes a user by their UUID.
-     */
-    public void deleteUser(UUID id) {
-        User user = getUserEntityById(id); // ensures the user exists before deleting
+    @Transactional
+    public void deleteCurrentUser(UUID currentUserId) {
+        User user = getUserEntityById(currentUserId);
+        refreshTokenService.revokeAllActiveTokensForUser(currentUserId);
 
-        userRepository.delete(user);
+        try {
+            userRepository.delete(user);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "User cannot be deleted while it is still referenced by other resources",
+                    ex);
+        }
+    }
+
+    private void updatePasswordIfRequested(User user, UpdateMeRequestDTO dto) {
+        boolean currentPasswordProvided = dto.getCurrentPassword() != null && !dto.getCurrentPassword().isBlank();
+        boolean newPasswordProvided = dto.getNewPassword() != null && !dto.getNewPassword().isBlank();
+
+        if (!currentPasswordProvided && !newPasswordProvided) {
+            return;
+        }
+        if (!currentPasswordProvided || !newPasswordProvided) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "currentPassword and newPassword are both required to change the password");
+        }
+        if (!passwordEncoder.matches(dto.getCurrentPassword(), user.getPassword())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Current password is incorrect");
+        }
+
+        user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        refreshTokenService.revokeAllActiveTokensForUser(user.getId());
     }
 
     private User getUserEntityById(UUID id) {
         return userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found: " + id));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: " + id));
     }
 
     private UserResponseDTO toResponseDTO(User user) {
         return new UserResponseDTO(user.getId(), user.getName(), user.getEmail());
+    }
+
+    private String normalizeEmail(String email) {
+        return email.trim().toLowerCase();
     }
 }
