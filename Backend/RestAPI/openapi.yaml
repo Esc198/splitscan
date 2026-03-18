@@ -1,0 +1,847 @@
+openapi: 3.0.3
+info:
+  title: SplitScan REST API
+  version: 0.1.0
+  description: |
+    Contract generated from the current Spring Boot controllers, DTOs, security rules,
+    and service-level validations in this repository.
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Auth
+  - name: Users
+  - name: Groups
+  - name: Transactions
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Enrique
+              email: enrique@example.com
+              password: secret123
+      responses:
+        '201':
+          description: User registered and tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '409':
+          description: Email already exists
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              example:
+                title: Conflict
+                status: 409
+                detail: Email already in use: enrique@example.com
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Authenticate a user
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: enrique@example.com
+              password: secret123
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          description: Invalid credentials
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+              example:
+                title: Unauthorized
+                status: 401
+                detail: Invalid email or password
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Rotate a refresh token and issue a new access token
+      operationId: refresh
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            example:
+              refreshToken: refresh-token
+      responses:
+        '200':
+          description: Tokens rotated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          description: Invalid, expired, or revoked refresh token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Revoke a refresh token
+      operationId: logout
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+            example:
+              refreshToken: refresh-token
+      responses:
+        '204':
+          description: Refresh token revoked
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          description: Invalid, expired, or revoked refresh token
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get the authenticated user
+      operationId: getCurrentUser
+      responses:
+        '200':
+          description: Current user data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '404':
+          description: Authenticated user does not exist anymore
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+    put:
+      tags:
+        - Users
+      summary: Update the authenticated user
+      operationId: updateCurrentUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMeRequest'
+            example:
+              name: Enrique Garcia
+              email: enrique@example.com
+              currentPassword: old-secret
+              newPassword: new-secret
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          description: Missing JWT or wrong current password
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Authenticated user not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: Email is already used by another user or the user is still referenced by other resources
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+    delete:
+      tags:
+        - Users
+      summary: Delete the authenticated user
+      operationId: deleteCurrentUser
+      responses:
+        '204':
+          description: User deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '404':
+          description: Authenticated user not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: User cannot be deleted because it is referenced by other resources
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /groups/mine:
+    get:
+      tags:
+        - Groups
+      summary: List groups where the authenticated user is a member
+      operationId: getMyGroups
+      responses:
+        '200':
+          description: Groups belonging to the current user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Group'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+
+  /groups:
+    post:
+      tags:
+        - Groups
+      summary: Create a group
+      description: The current implementation returns 200 OK instead of 201 Created.
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupRequest'
+            example:
+              name: Trip to Valencia
+      responses:
+        '200':
+          description: Group created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+
+  /groups/{groupId}:
+    get:
+      tags:
+        - Groups
+      summary: Get a group by id
+      operationId: getGroup
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '200':
+          description: Group detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /groups/{groupId}/members:
+    post:
+      tags:
+        - Groups
+      summary: Add members to a group
+      operationId: addMembers
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GroupMembersRequest'
+            example:
+              userIds:
+                - 7d41242e-532f-4ff4-a7c5-d3e532b8f0e4
+                - 0a450f35-7d25-45ce-a4f3-1f28e41a792a
+      responses:
+        '200':
+          description: Updated group including its users
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Group'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group or one of the users was not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: Duplicate userIds or user already belongs to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /groups/{groupId}/transactions:
+    get:
+      tags:
+        - Transactions
+      summary: List transactions in a group
+      description: |
+        Without `since`, only non-deleted transactions are returned.
+        With `since`, the backend returns every transaction updated at or after that instant,
+        including soft-deleted ones whose `deletedAt` is not null.
+      operationId: getTransactions
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/Since'
+      responses:
+        '200':
+          description: Transactions ordered by updatedAt ascending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Transaction'
+        '400':
+          description: Invalid since query parameter
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+    post:
+      tags:
+        - Transactions
+      summary: Create a transaction in a group
+      operationId: createTransaction
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+            example:
+              description: Dinner
+              paidByUserId: 7d41242e-532f-4ff4-a7c5-d3e532b8f0e4
+              amount: 48.5
+              splits:
+                - userId: 7d41242e-532f-4ff4-a7c5-d3e532b8f0e4
+                  amount: 24.25
+                - userId: 0a450f35-7d25-45ce-a4f3-1f28e41a792a
+                  amount: 24.25
+      responses:
+        '201':
+          description: Transaction created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: paidByUserId or split users do not belong to the group, or split users are duplicated
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+  /groups/{groupId}/transactions/{transactionId}:
+    get:
+      tags:
+        - Transactions
+      summary: Get one transaction
+      operationId: getTransaction
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/TransactionId'
+      responses:
+        '200':
+          description: Transaction detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group or transaction not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+    put:
+      tags:
+        - Transactions
+      summary: Replace a transaction
+      operationId: updateTransaction
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/TransactionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransactionRequest'
+      responses:
+        '200':
+          description: Transaction updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          $ref: '#/components/responses/BadRequestProblem'
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group or transaction not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '409':
+          description: paidByUserId or split users do not belong to the group, or split users are duplicated
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+    delete:
+      tags:
+        - Transactions
+      summary: Soft-delete a transaction
+      operationId: deleteTransaction
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/TransactionId'
+      responses:
+        '204':
+          description: Transaction marked as deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedProblem'
+        '403':
+          description: Authenticated user does not belong to the group
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+        '404':
+          description: Group or transaction not found
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetail'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      description: Group UUID
+      schema:
+        type: string
+        format: uuid
+    TransactionId:
+      name: transactionId
+      in: path
+      required: true
+      description: Transaction UUID
+      schema:
+        type: string
+        format: uuid
+    Since:
+      name: since
+      in: query
+      required: false
+      description: ISO-8601 timestamp. When present, returns transactions updated at or after this instant.
+      schema:
+        type: string
+        format: date-time
+      example: '2026-03-16T10:30:00Z'
+
+  responses:
+    BadRequestProblem:
+      description: Request body or parameters do not satisfy the backend validations
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+    UnauthorizedProblem:
+      description: Missing or invalid authentication
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetail'
+          example:
+            title: Unauthorized
+            status: 401
+            detail: User is not authenticated
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+
+    RefreshTokenRequest:
+      type: object
+      required:
+        - refreshToken
+      properties:
+        refreshToken:
+          type: string
+          minLength: 1
+
+    UpdateMeRequest:
+      type: object
+      description: currentPassword and newPassword must be sent together when changing the password.
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+        currentPassword:
+          type: string
+          minLength: 1
+        newPassword:
+          type: string
+          minLength: 1
+
+    User:
+      type: object
+      required:
+        - id
+        - name
+        - email
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+
+    AuthResponse:
+      type: object
+      required:
+        - accessToken
+        - refreshToken
+        - accessTokenExpiresAt
+        - user
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        accessTokenExpiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/User'
+
+    GroupRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    GroupMembersRequest:
+      type: object
+      required:
+        - userIds
+      properties:
+        userIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    Group:
+      type: object
+      required:
+        - id
+        - name
+        - createdAt
+        - users
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        users:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+
+    TransactionRequest:
+      type: object
+      required:
+        - paidByUserId
+        - amount
+        - splits
+      properties:
+        description:
+          type: string
+          nullable: true
+        paidByUserId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          multipleOf: 0.01
+        splits:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/TransactionSplitRequest'
+
+    TransactionSplitRequest:
+      type: object
+      required:
+        - userId
+        - amount
+      properties:
+        userId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          multipleOf: 0.01
+
+    Transaction:
+      type: object
+      required:
+        - id
+        - paidByUserId
+        - amount
+        - createdAt
+        - updatedAt
+        - splits
+      properties:
+        id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          nullable: true
+        paidByUserId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          multipleOf: 0.01
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        splits:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransactionSplit'
+
+    TransactionSplit:
+      type: object
+      required:
+        - userId
+        - amount
+      properties:
+        userId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          multipleOf: 0.01
+
+    ProblemDetail:
+      type: object
+      description: Generic problem response returned by Spring for ResponseStatusException and request binding errors.
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri
+      additionalProperties: true
